@@ -3,117 +3,20 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { GraphQLClient } from "graphql-request";
 import { getIntrospectionQuery } from "graphql";
 import { z } from "zod";
+import {
+  getRootTypeName,
+  getTypeByName,
+  isLikelyTableType,
+  isScalarOrEnum,
+  toTypeString,
+  unwrapType,
+  type IntrospectionSchema
+} from "./introspection.js";
 
 export type ServerOptions = {
   endpoint: string;
   adminSecret: string;
 };
-
-type IntrospectionTypeRef = {
-  kind: string;
-  name: string | null;
-  ofType: IntrospectionTypeRef | null;
-};
-
-type IntrospectionField = {
-  name: string;
-  description: string | null;
-  type: IntrospectionTypeRef;
-  args: Array<{
-    name: string;
-    description: string | null;
-    type: IntrospectionTypeRef;
-  }>;
-};
-
-type IntrospectionType = {
-  kind: string;
-  name: string;
-  description: string | null;
-  fields?: IntrospectionField[] | null;
-  inputFields?: Array<{ name: string; type: IntrospectionTypeRef }> | null;
-  enumValues?: Array<{ name: string; description: string | null }> | null;
-};
-
-type IntrospectionSchema = {
-  queryType: { name: string } | null;
-  mutationType: { name: string } | null;
-  subscriptionType: { name: string } | null;
-  types: IntrospectionType[];
-};
-
-const IGNORE_TYPE_SUFFIXES = [
-  "_aggregate",
-  "_aggregate_fields",
-  "_aggregate_order_by",
-  "_avg_fields",
-  "_bool_exp",
-  "_comparison_exp",
-  "_constraint",
-  "_inc_input",
-  "_max_fields",
-  "_min_fields",
-  "_mutation_response",
-  "_order_by",
-  "_pk_columns_input",
-  "_select_column",
-  "_set_input",
-  "_stddev_fields",
-  "_stddev_pop_fields",
-  "_stddev_samp_fields",
-  "_sum_fields",
-  "_var_pop_fields",
-  "_var_samp_fields",
-  "_variance_fields",
-  "_stream_cursor_input",
-  "_stream_cursor_value_input"
-];
-
-const ROOT_TYPE_NAMES = new Set(["query_root", "mutation_root", "subscription_root"]);
-
-function unwrapType(type: IntrospectionTypeRef): { name: string | null; kind: string; isList: boolean; isNonNull: boolean } {
-  let current = type;
-  let isList = false;
-  let isNonNull = false;
-
-  while (current.ofType) {
-    if (current.kind === "NON_NULL") {
-      isNonNull = true;
-    }
-    if (current.kind === "LIST") {
-      isList = true;
-    }
-    current = current.ofType;
-  }
-
-  return { name: current.name, kind: current.kind, isList, isNonNull };
-}
-
-function toTypeString(type: IntrospectionTypeRef): string {
-  if (type.kind === "NON_NULL" && type.ofType) {
-    return `${toTypeString(type.ofType)}!`;
-  }
-  if (type.kind === "LIST" && type.ofType) {
-    return `[${toTypeString(type.ofType)}]`;
-  }
-  return type.name ?? type.kind;
-}
-
-function isScalarOrEnum(typeName: string | null, schema: IntrospectionSchema): boolean {
-  if (!typeName) return false;
-  const found = schema.types.find((t) => t.name === typeName);
-  if (!found) return false;
-  return found.kind === "SCALAR" || found.kind === "ENUM";
-}
-
-function isLikelyTableType(type: IntrospectionType): boolean {
-  if (type.kind !== "OBJECT") return false;
-  if (!type.name || type.name.startsWith("__")) return false;
-  if (ROOT_TYPE_NAMES.has(type.name)) return false;
-  if (IGNORE_TYPE_SUFFIXES.some((suffix) => type.name.endsWith(suffix))) return false;
-  if (!type.fields || type.fields.length === 0) return false;
-  return true;
-}
 
 export async function startServer(options: ServerOptions): Promise<void> {
   const client = new GraphQLClient(options.endpoint, {
@@ -134,16 +37,6 @@ export async function startServer(options: ServerOptions): Promise<void> {
     const data = await client.request<{ __schema: IntrospectionSchema }>(getIntrospectionQuery());
     schemaCache = data.__schema;
     return schemaCache;
-  }
-
-  function getRootType(schema: IntrospectionSchema, operation: "query" | "mutation" | "subscription") {
-    if (operation === "query") return schema.queryType?.name ?? "query_root";
-    if (operation === "mutation") return schema.mutationType?.name ?? "mutation_root";
-    return schema.subscriptionType?.name ?? "subscription_root";
-  }
-
-  function getTypeByName(schema: IntrospectionSchema, name: string): IntrospectionType | undefined {
-    return schema.types.find((t) => t.name === name);
   }
 
   function formatError(error: unknown): string {
@@ -245,7 +138,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
       try {
         const schema = await getSchema();
         const op = (fieldType ?? "QUERY").toLowerCase() as "query" | "mutation" | "subscription";
-        const rootTypeName = getRootType(schema, op);
+        const rootTypeName = getRootTypeName(schema, op);
         const rootType = getTypeByName(schema, rootTypeName);
         if (!rootType || !rootType.fields) {
           return { content: [{ type: "text", text: `Root type not found for ${op}` }] };
@@ -311,7 +204,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
     async ({ tableName, limit }) => {
       try {
         const schema = await getSchema();
-        const rootTypeName = getRootType(schema, "query");
+        const rootTypeName = getRootTypeName(schema, "query");
         const rootType = getTypeByName(schema, rootTypeName);
         const field = rootType?.fields?.find((f) => f.name === tableName);
         if (!field) {
