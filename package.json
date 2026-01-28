@@ -1,6 +1,6 @@
 {
   "name": "hasura-mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Hasura GraphQL",
   "type": "module",
   "bin": {
@@ -23,6 +23,15 @@
     "graphql"
   ],
   "license": "MIT",
+  "author": "Surya Rajendhran <suryarajendhran@outlook.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suryarajendhran/hasura-mcp-server.git"
+  },
+  "homepage": "https://github.com/suryarajendhran/hasura-mcp-server",
+  "bugs": {
+    "url": "https://github.com/suryarajendhran/hasura-mcp-server/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.4.1",
     "graphql": "^16.9.0",

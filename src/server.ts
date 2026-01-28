@@ -44,6 +44,14 @@ export async function startServer(options: ServerOptions): Promise<void> {
     return String(error);
   }
 
+  function containsMutation(query: string): boolean {
+    const normalized = query
+      .replace(/#.*$/gm, "")
+      .replace(/"""[\s\S]*?"""/g, "")
+      .trim();
+    return /^\s*mutation\s/im.test(normalized) || /\bmutation\s*\{/im.test(normalized);
+  }
+
   server.resource(
     "schema",
     new ResourceTemplate("hasura://schema", { list: undefined }),
@@ -279,30 +287,14 @@ export async function startServer(options: ServerOptions): Promise<void> {
     "run_graphql_query",
     graphqlInput,
     async ({ query, variables }) => {
-      if (/\bmutation\b/i.test(query)) {
-        return { content: [{ type: "text", text: "Query contains mutation keyword. Use run_graphql_mutation instead." }] };
+      if (containsMutation(query)) {
+        return { content: [{ type: "text", text: "Mutation operations are not allowed." }] };
       }
       try {
         const data = await client.request(query, variables ?? {});
         return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
       } catch (error) {
         return { content: [{ type: "text", text: `GraphQL query failed: ${formatError(error)}` }] };
-      }
-    }
-  );
-
-  server.tool(
-    "run_graphql_mutation",
-    { mutation: z.string(), variables: z.record(z.any()).optional() },
-    async ({ mutation, variables }) => {
-      if (!/\bmutation\b/i.test(mutation)) {
-        return { content: [{ type: "text", text: "Mutation keyword not found. Ensure your GraphQL starts with mutation." }] };
-      }
-      try {
-        const data = await client.request(mutation, variables ?? {});
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-      } catch (error) {
-        return { content: [{ type: "text", text: `GraphQL mutation failed: ${formatError(error)}` }] };
       }
     }
   );
