@@ -38,7 +38,8 @@ npx hasura-mcp-server https://your-hasura/v1/graphql your-admin-secret
 - `preview_table_data`
 - `aggregate_data`
 - `run_graphql_query`
-- `run_graphql_mutation`
+  
+Note: mutation operations are not allowed.
 
 ## Resource
 
