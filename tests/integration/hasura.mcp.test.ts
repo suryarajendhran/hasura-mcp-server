@@ -86,4 +86,14 @@ describe("hasura mcp integration", () => {
     const parsed = text ? JSON.parse(text) : {};
     expect(parsed).toHaveProperty("authors");
   });
+
+  it("reports mutation capability in health check", async () => {
+    const result = await client?.callTool({ name: "health_check", arguments: {} });
+    const text = result?.content?.[0]?.type === "text" ? result?.content?.[0]?.text : "";
+    const parsed = text ? JSON.parse(text) : {};
+    expect(typeof parsed.hasMutationFields).toBe("boolean");
+    if (parsed.hasMutationFields) {
+      expect(parsed.warnings?.[0]).toMatch(/write access/i);
+    }
+  });
 });

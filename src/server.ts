@@ -87,7 +87,24 @@ export async function startServer(options: ServerOptions): Promise<void> {
         }
 
         const data = await client.request("query { __typename }");
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        const schema = await getSchema();
+        const mutationTypeName = getRootTypeName(schema, "mutation");
+        const mutationType = getTypeByName(schema, mutationTypeName);
+        const hasMutationFields = Boolean(mutationType?.fields && mutationType.fields.length > 0);
+        const warnings = hasMutationFields
+          ? [
+              "Mutation fields are present in the schema. These credentials likely have write access. Consider using read-only credentials."
+            ]
+          : [];
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ data, hasMutationFields, warnings }, null, 2)
+            }
+          ]
+        };
       } catch (error) {
         return { content: [{ type: "text", text: `Health check failed: ${formatError(error)}` }] };
       }
